@@ -1,93 +1,80 @@
-# agents_modular.py
+import os
+import json
+import re
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+# Load Gemini API key from .env
+load_dotenv()
+GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=GENAI_API_KEY)
+# Use the latest recommended Gemini model for agentic AI
+llm_model = genai.GenerativeModel("gemini-2.0-flash")
+
+def call_llm(prompt):
+    response = llm_model.generate_content(prompt)
+    content = response.text.strip()
+    # Remove code block formatting if present
+    cleaned = re.sub(r"^``````$", "", content, flags=re.MULTILINE).strip()
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        # Fallback: try to extract JSON from text
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return {"score": 0.5, "notes": "LLM output parsing failed."}
 
 class BasicInfoAgent:
     def assess(self, asset):
-        score = 0.0
-        notes = []
-        if asset.get("description") and len(asset["description"]) > 20:
-            score += 0.3
-        else:
-            notes.append("Description is missing or too short.")
-        if asset.get("asset_type") and asset["asset_type"] != "unknown":
-            score += 0.3
-        else:
-            notes.append("Asset type is missing or unknown.")
-        if asset.get("location"):
-            score += 0.2
-        else:
-            notes.append("Location is missing.")
-        if asset.get("estimated_value", 0) > 0:
-            score += 0.2
-        else:
-            notes.append("Estimated value is missing or zero.")
-        return {
-            "score": round(min(score, 1.0), 2),
-            "notes": "All basic info present." if score >= 0.8 else "; ".join(notes)
-        }
+        prompt = f"""
+You are an AI agent checking if all basic asset information is present and complete.
+Asset fields:
+- Type: {asset.get('asset_type')}
+- Value: {asset.get('estimated_value')}
+- Location: {asset.get('location')}
+- Description: {asset.get('description')}
+Score 1.0 if all fields are present and detailed, 0.5 if some are missing, 0.0 if mostly missing. Explain.
+Respond as JSON: {{"score": float, "notes": "..."}}
+"""
+        return call_llm(prompt)
 
 class ValueAgent:
-    def __init__(self):
-        self.value_ranges = {
-            'real_estate': {'min': 10000, 'max': 1_000_000_000},
-            'vehicle': {'min': 1000, 'max': 2_000_000},
-            'artwork': {'min': 500, 'max': 100_000_000},
-            'equipment': {'min': 100, 'max': 5_000_000},
-            'commodity': {'min': 50, 'max': 10_000_000}
-        }
-
     def assess(self, asset):
-        value = asset.get("estimated_value", 0)
-        asset_type = asset.get("asset_type", "unknown")
-        if asset_type not in self.value_ranges:
-            return {"score": 0.5, "notes": "Unknown asset type"}
-        r = self.value_ranges[asset_type]
-        if r["min"] <= value <= r["max"]:
-            return {"score": 1.0, "notes": "Value within typical range"}
-        elif value < r["min"]:
-            return {"score": 0.4, "notes": "Value below expected"}
-        return {"score": 0.6, "notes": "Value above expected"}
+        prompt = f"""
+You are an AI agent evaluating if the asset's estimated value is plausible for its type and location.
+Asset fields:
+- Type: {asset.get('asset_type')}
+- Value: {asset.get('estimated_value')}
+- Location: {asset.get('location')}
+- Description: {asset.get('description')}
+Score 1.0 if value is plausible, 0.4 if too low, 0.6 if too high, 0.5 if unknown. Explain.
+Respond as JSON: {{"score": float, "notes": "..."}}
+"""
+        return call_llm(prompt)
 
 class JurisdictionAgent:
     def assess(self, asset):
-        location = asset.get("location", "")
-        loc = location.upper()
-        mapping = {
-            'IN': ['INDIA', 'MUMBAI', 'DELHI', 'BANGALORE', 'PUNE'],
-            'US': ['USA', 'UNITED STATES', 'NEW YORK'],
-            'UK': ['UNITED KINGDOM', 'LONDON'],
-            'CA': ['CANADA'],
-            'EU': ['GERMANY', 'FRANCE', 'ITALY', 'EUROPE'],
-            'SG': ['SINGAPORE']
-        }
-        for code, keywords in mapping.items():
-            if any(city in loc for city in keywords):
-                if code == "IN":
-                    return {"score": 0.9, "notes": "Jurisdiction recognized as India"}
-                else:
-                    return {"score": 0.9, "notes": f"Jurisdiction recognized as {code}"}
-        return {"score": 0.5, "notes": "Jurisdiction not recognized"}
+        prompt = f"""
+You are an AI agent verifying the jurisdiction/location of the asset.
+Asset fields:
+- Location: {asset.get('location')}
+Score 0.9 if location is specific and recognized (especially any Indian city/state/UT), 0.5 if vague or missing. Explain.
+Respond as JSON: {{"score": float, "notes": "..."}}
+"""
+        return call_llm(prompt)
 
 class AssetSpecificAgent:
     def assess(self, asset):
-        asset_type = asset.get("asset_type", "unknown")
-        description = asset.get("description", "").lower()
-        indicators = {
-            "real_estate": ["flat", "apartment", "bedroom", "sqft", "deed"],
-            "vehicle": ["engine", "model", "mileage", "year"],
-            "artwork": ["artist", "canvas", "painting"],
-            "equipment": ["serial", "manufacturer", "warranty"],
-            "commodity": ["weight", "grade", "purity"]
-        }
-        if asset_type not in indicators:
-            return {"score": 0.5, "notes": "Unknown asset type"}
-        score = 0.5
-        hits = 0
-        for word in indicators[asset_type]:
-            if word in description:
-                score += 0.1
-                hits += 1
-        notes = f"Found {hits} asset-specific keywords." if hits else "No asset-specific keywords found."
-        return {"score": round(min(score, 1.0), 2), "notes": notes}
+        prompt = f"""
+You are an AI agent checking if the asset description contains type-specific details and keywords.
+Asset fields:
+- Type: {asset.get('asset_type')}
+- Description: {asset.get('description')}
+Score 1.0 if many relevant details/keywords, 0.5 if some, 0.0 if none. Explain.
+Respond as JSON: {{"score": float, "notes": "..."}}
+"""
+        return call_llm(prompt)
 
 class CoordinatorAgent:
     def __init__(self):
@@ -103,8 +90,8 @@ class CoordinatorAgent:
         explanations = []
         for key, agent in self.agents:
             agent_result = agent.assess(asset)
-            results[key] = agent_result["score"]
-            explanations.append(f"{key}: {agent_result['notes']}")
+            results[key] = agent_result.get("score", 0.5)
+            explanations.append(f"{key}: {agent_result.get('notes', '')}")
         avg_score = sum(results.values()) / len(results)
         status = "verified" if avg_score >= 0.7 else ("requires_review" if avg_score >= 0.5 else "rejected")
         return {
