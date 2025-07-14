@@ -103,8 +103,18 @@ def verify_asset(asset_id):
         logger.info(f"[VERIFY] Verifying asset ID {asset_id}")
         asset_data = asset.to_dict()
         verification_result = verification_agent.verify_asset(asset_data)
+
+        # Store verification score, breakdown, and (optional) LLM comments in the asset table for quick access
         asset.verification_status = verification_result['status']
         asset.updated_at = datetime.utcnow()
+        # Optional: Save these fields if you have them in your Asset model
+        if hasattr(asset, "verification_score"):
+            asset.verification_score = verification_result.get('overall_score')
+        if hasattr(asset, "verification_breakdown"):
+            asset.verification_breakdown = json.dumps(verification_result.get('breakdown', {}))
+        if hasattr(asset, "llm_comments"):
+            asset.llm_comments = verification_result.get('llm_comments', '')
+
         db.session.commit()
         transaction = Transaction(
             asset_id=asset.id,
@@ -164,8 +174,21 @@ def get_asset(asset_id):
     try:
         asset = Asset.query.get_or_404(asset_id)
         transactions = Transaction.query.filter_by(asset_id=asset_id).order_by(Transaction.created_at.desc()).all()
+        # Optionally, include latest verification score, breakdown, and LLM comments if present
+        extra_fields = {}
+        if hasattr(asset, "verification_score"):
+            extra_fields["verification_score"] = asset.verification_score
+        if hasattr(asset, "verification_breakdown"):
+            try:
+                extra_fields["verification_breakdown"] = json.loads(asset.verification_breakdown)
+            except Exception:
+                extra_fields["verification_breakdown"] = asset.verification_breakdown
+        if hasattr(asset, "llm_comments"):
+            extra_fields["llm_comments"] = asset.llm_comments
+        asset_dict = asset.to_dict()
+        asset_dict.update(extra_fields)
         return jsonify({
-            'asset': asset.to_dict(),
+            'asset': asset_dict,
             'transactions': [tx.to_dict() for tx in transactions]
         })
     except Exception as e:

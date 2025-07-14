@@ -32,6 +32,12 @@ class Asset(db.Model):
     verification_status = db.Column(db.String(20), default='pending')
     token_id = db.Column(db.String(100), nullable=True)
     requirements = db.Column(db.Text, nullable=True)  # JSON string
+
+    # --- NEW FIELDS FOR VERIFICATION SESSION DATA ---
+    verification_score = db.Column(db.Float, nullable=True)
+    verification_breakdown = db.Column(db.Text, nullable=True)  # JSON string (dict)
+    llm_comments = db.Column(db.Text, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -48,9 +54,13 @@ class Asset(db.Model):
             'verification_status': self.verification_status,
             'token_id': self.token_id,
             'requirements': json.loads(self.requirements) if self.requirements else {},
+            'verification_score': self.verification_score,
+            'verification_breakdown': json.loads(self.verification_breakdown) if self.verification_breakdown else {},
+            'llm_comments': self.llm_comments,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }
+
 
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)

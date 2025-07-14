@@ -1,113 +1,115 @@
+# agents_modular.py
+
+class BasicInfoAgent:
+    def assess(self, asset):
+        score = 0.0
+        notes = []
+        if asset.get("description") and len(asset["description"]) > 20:
+            score += 0.3
+        else:
+            notes.append("Description is missing or too short.")
+        if asset.get("asset_type") and asset["asset_type"] != "unknown":
+            score += 0.3
+        else:
+            notes.append("Asset type is missing or unknown.")
+        if asset.get("location"):
+            score += 0.2
+        else:
+            notes.append("Location is missing.")
+        if asset.get("estimated_value", 0) > 0:
+            score += 0.2
+        else:
+            notes.append("Estimated value is missing or zero.")
+        return {
+            "score": round(min(score, 1.0), 2),
+            "notes": "All basic info present." if score >= 0.8 else "; ".join(notes)
+        }
+
 class ValueAgent:
+    def __init__(self):
+        self.value_ranges = {
+            'real_estate': {'min': 10000, 'max': 1_000_000_000},
+            'vehicle': {'min': 1000, 'max': 2_000_000},
+            'artwork': {'min': 500, 'max': 100_000_000},
+            'equipment': {'min': 100, 'max': 5_000_000},
+            'commodity': {'min': 50, 'max': 10_000_000}
+        }
+
     def assess(self, asset):
         value = asset.get("estimated_value", 0)
         asset_type = asset.get("asset_type", "unknown")
-        ranges = {
-            "real_estate": (10000, 1_000_000_000),
-            "vehicle": (1000, 2_000_000),
-            "artwork": (500, 100_000_000),
-            "equipment": (100, 5_000_000),
-            "commodity": (50, 10_000_000),
-        }
-        min_val, max_val = ranges.get(asset_type, (0, float('inf')))
-        if min_val <= value <= max_val:
+        if asset_type not in self.value_ranges:
+            return {"score": 0.5, "notes": "Unknown asset type"}
+        r = self.value_ranges[asset_type]
+        if r["min"] <= value <= r["max"]:
             return {"score": 1.0, "notes": "Value within typical range"}
-        elif value < min_val:
+        elif value < r["min"]:
             return {"score": 0.4, "notes": "Value below expected"}
-        else:
-            return {"score": 0.6, "notes": "Value above expected"}
+        return {"score": 0.6, "notes": "Value above expected"}
 
-class RiskAgent:
+class JurisdictionAgent:
     def assess(self, asset):
-        desc = asset.get("description", "").lower()
-        if "unknown" in desc or len(desc) < 20:
-            return {"score": 0.4, "notes": "Description vague or too short"}
-        return {"score": 1.0, "notes": "Description seems adequate"}
-
-class ConsistencyAgent:
-    def assess(self, asset):
-        asset_type = asset.get("asset_type", "")
-        desc = asset.get("description", "").lower()
-        keywords = {
-            "real_estate": ["apartment", "sqft", "deed"],
-            "vehicle": ["engine", "model", "mileage"],
-            "artwork": ["artist", "painting"],
+        location = asset.get("location", "")
+        loc = location.upper()
+        mapping = {
+            'IN': ['INDIA', 'MUMBAI', 'DELHI', 'BANGALORE', 'PUNE'],
+            'US': ['USA', 'UNITED STATES', 'NEW YORK'],
+            'UK': ['UNITED KINGDOM', 'LONDON'],
+            'CA': ['CANADA'],
+            'EU': ['GERMANY', 'FRANCE', 'ITALY', 'EUROPE'],
+            'SG': ['SINGAPORE']
         }
-        hits = sum(1 for word in keywords.get(asset_type, []) if word in desc)
-        score = 0.5 + 0.1 * hits
-        return {"score": min(score, 1.0), "notes": f"Found {hits} asset-specific keywords"}
+        for code, keywords in mapping.items():
+            if any(city in loc for city in keywords):
+                if code == "IN":
+                    return {"score": 0.9, "notes": "Jurisdiction recognized as India"}
+                else:
+                    return {"score": 0.9, "notes": f"Jurisdiction recognized as {code}"}
+        return {"score": 0.5, "notes": "Jurisdiction not recognized"}
 
-class DescriptionQualityAgent:
+class AssetSpecificAgent:
     def assess(self, asset):
-        desc = asset.get("description", "").strip().lower()
-        if len(desc) < 50 or any(term in desc for term in ["unknown", "n/a", "none"]):
-            return {"score": 0.4, "notes": "Description is too short or vague"}
-        return {"score": 1.0, "notes": "Description is detailed and specific"}
-
-class ValueConsistencyAgent:
-    def assess(self, asset):
-        value = asset.get("estimated_value", 0)
-        desc = asset.get("description", "").lower()
-        if "old" in desc and value > 1_000_000:
-            return {"score": 0.5, "notes": "High value for 'old' asset"}
-        if "luxury" in desc and value < 100_000:
-            return {"score": 0.5, "notes": "Low value for 'luxury' asset"}
-        return {"score": 1.0, "notes": "Value matches description"}
-
-class LocationSpecificityAgent:
-    def assess(self, asset):
-        location = asset.get("location", "").strip().lower()
-        if not location or location in ["unknown", "n/a", "none"]:
-            return {"score": 0.4, "notes": "Location is vague or missing"}
-        if len(location) < 3:
-            return {"score": 0.6, "notes": "Location too short"}
-        if "india" in location:
-            return {"score": 1.0, "notes": "Location is specific and recognized (India)"}
-        indian_states = [
-            "andhra pradesh", "arunachal pradesh", "assam", "bihar", "chhattisgarh", "goa", "gujarat",
-            "haryana", "himachal pradesh", "jharkhand", "karnataka", "kerala", "madhya pradesh",
-            "maharashtra", "manipur", "meghalaya", "mizoram", "nagaland", "odisha", "punjab",
-            "rajasthan", "sikkim", "tamil nadu", "telangana", "tripura", "uttar pradesh", "uttarakhand",
-            "west bengal", "delhi", "jammu", "kashmir", "ladakh", "puducherry", "chandigarh", "dadra",
-            "daman", "daman and diu", "andaman", "nicobar", "lakshadweep"
-        ]
-        if any(state in location for state in indian_states):
-            return {"score": 1.0, "notes": "Location is specific and recognized (India)"}
-        return {"score": 1.0, "notes": "Location is specific"}
-
-class UserInteractionAgent:
-    def query(self, asset):
-        questions = []
-        if not asset.get("location"):
-            questions.append("Can you specify the asset's location?")
-        if asset.get("estimated_value", 0) == 0:
-            questions.append("What is the estimated value?")
-        if len(asset.get("description", "")) < 20:
-            questions.append("Please provide a more detailed description.")
-        return questions
+        asset_type = asset.get("asset_type", "unknown")
+        description = asset.get("description", "").lower()
+        indicators = {
+            "real_estate": ["flat", "apartment", "bedroom", "sqft", "deed"],
+            "vehicle": ["engine", "model", "mileage", "year"],
+            "artwork": ["artist", "canvas", "painting"],
+            "equipment": ["serial", "manufacturer", "warranty"],
+            "commodity": ["weight", "grade", "purity"]
+        }
+        if asset_type not in indicators:
+            return {"score": 0.5, "notes": "Unknown asset type"}
+        score = 0.5
+        hits = 0
+        for word in indicators[asset_type]:
+            if word in description:
+                score += 0.1
+                hits += 1
+        notes = f"Found {hits} asset-specific keywords." if hits else "No asset-specific keywords found."
+        return {"score": round(min(score, 1.0), 2), "notes": notes}
 
 class CoordinatorAgent:
     def __init__(self):
         self.agents = [
-            ValueAgent(), RiskAgent(), ConsistencyAgent(),
-            DescriptionQualityAgent(), ValueConsistencyAgent(),
-            LocationSpecificityAgent()
+            ("basic_info", BasicInfoAgent()),
+            ("value_assessment", ValueAgent()),
+            ("jurisdiction", JurisdictionAgent()),
+            ("asset_specific", AssetSpecificAgent())
         ]
-        self.user_interaction_agent = UserInteractionAgent()
 
     def verify(self, asset):
         results = {}
-        for agent in self.agents:
-            agent_name = agent.__class__.__name__
-            results[agent_name] = agent.assess(asset)
-        scores = [r["score"] for r in results.values()]
-        avg_score = sum(scores) / len(scores)
+        explanations = []
+        for key, agent in self.agents:
+            agent_result = agent.assess(asset)
+            results[key] = agent_result["score"]
+            explanations.append(f"{key}: {agent_result['notes']}")
+        avg_score = sum(results.values()) / len(results)
         status = "verified" if avg_score >= 0.7 else ("requires_review" if avg_score >= 0.5 else "rejected")
-        questions = self.user_interaction_agent.query(asset)
         return {
             "overall_score": round(avg_score, 2),
             "status": status,
             "breakdown": results,
-            "follow_up_questions": questions,
-            "explanation": [r["notes"] for r in results.values()]
+            "agent_notes": explanations
         }
