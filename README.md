@@ -96,21 +96,34 @@ requirements.txt
 - **print_records.py**: Utility for printing database records.
 - **static/** and **templates/**: Frontend assets and HTML templates.
 
-## Agentic AI Framework
+## Agentic AI Framework – Agent Table (README Section)
 
-| Agent Name                | Role & Description                                                                                 |
-|---------------------------|---------------------------------------------------------------------------------------------------|
-| LLM Parsing Agent         | Extracts structured fields from user input using Gemini LLM; falls back to keyword mapping.        |
-| ValueAgent                | Checks if asset value is within plausible range for its type.                                      |
-| RiskAgent                 | Flags vague or suspicious descriptions.                                                           |
-| ConsistencyAgent          | Ensures asset type matches description keywords.                                                  |
-| DescriptionQualityAgent   | Rewards detailed, specific descriptions.                                                          |
-| ValueConsistencyAgent     | Checks if value matches claims in description.                                                    |
-| LocationSpecificityAgent  | Accepts any Indian (or global) location; validates jurisdiction.                                  |
-| UserInteractionAgent      | Generates clarifying questions if required info is missing.                                       |
-| CoordinatorAgent          | Aggregates all agent outputs, computes final score and status, and provides explainable results.  |
+Below is a ready-to-use Markdown table and supporting text for your project’s README, describing the core agents in your modular verification pipeline. This matches your latest, robust, and interlinked implementation.
 
-## Usage Instructions
+### Modular Verification Agents
+
+| Agent Name           | Role & Description                                                                                      |
+|----------------------|--------------------------------------------------------------------------------------------------------|
+| **LLM Parsing Agent**    | Extracts structured fields (type, value, location, description) from user input using Gemini LLM.       |
+| **BasicInfoAgent**       | Checks if all fundamental fields (description, type, location, value) are present and sufficiently detailed. |
+| **ValueAgent**           | Assesses whether the estimated value is plausible for the asset type based on predefined ranges.        |
+| **JurisdictionAgent**    | Verifies if the asset’s location is recognized and specific (with special handling for India).          |
+| **AssetSpecificAgent**   | Looks for asset-type-specific keywords in the description to ensure relevance and detail.               |
+| **CoordinatorAgent**     | Runs all modular agents, aggregates their scores and explanations, computes the overall score and status, and provides a full breakdown. |
+| **VerificationAgent**    | Orchestrates the full verification process: calls the CoordinatorAgent, adds recommendations and next steps, and returns a unified, explainable result. |
+
+### How the Modular Agents Work Together
+
+1. **User submits asset description.**
+2. **LLM Parsing Agent** extracts key fields (type, value, location, description).
+3. **CoordinatorAgent** runs each modular agent:
+   - **BasicInfoAgent**: Checks completeness of core fields.
+   - **ValueAgent**: Assesses value plausibility.
+   - **JurisdictionAgent**: Validates location specificity.
+   - **AssetSpecificAgent**: Looks for type-specific keywords.
+4. **CoordinatorAgent** aggregates scores, explanations, and assigns an overall status.
+5. **VerificationAgent** adds recommendations and next steps, producing the final verification result.
+6. **Results are stored and shown to the user.
 
 1. **Submit an Asset:**  
    Use the web form to enter your wallet address, a detailed asset description, and (optionally) your email.
